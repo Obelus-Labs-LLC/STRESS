@@ -7,6 +7,26 @@ STRESS is a reliability benchmarking framework designed to evaluate how computat
 - Reference Implementation: Rust (`stress-ref/`) + Python (`stress/`)
 - Compliance: Binary
 
+## Quick Start
+
+```bash
+pip install -e .
+stress-benchmark --workload W1-A --profile SP-1 --seed 42 --runs 3 --out-dir ./results
+```
+
+Or from Python:
+
+```python
+from stress.runner import run_benchmark
+
+run_benchmark(
+    out_dir="./results", workload_id="W1-A", workload_version="0.2",
+    stress_profile_id="SP-1", stress_parameters={"SP-1": {"rate": 0.001}},
+    execution_environment={"runtime": "python"}, master_seed=42, n_runs=3,
+    gds_levels=[0.1, 0.2, 0.3],
+)
+```
+
 ## Full Specification
 
 - **[STRESS v0.2 Specification](./docs/specification-v0.2.md)** — Complete technical specification
@@ -15,6 +35,8 @@ STRESS is a reliability benchmarking framework designed to evaluate how computat
 - **[Reference Workloads](./docs/STRESS_v0_Reference_Workloads.md)** — W1-A, W2-A, W3-A definitions
 - **[Stress Profiles](./docs/STRESS_v0_Reference_Stress_Profiles.md)** — SP-0 through SP-5 definitions
 - **[Glossary](./docs/glossary.md)** — Term definitions
+- **[Metric Independence Analysis](./docs/metric-independence.md)** — GDS/ARR independence proof
+- **[Validation Methodology](./docs/validation-methodology.md)** — SRI correlation validation protocol
 
 ## Repository Structure
 
@@ -25,6 +47,7 @@ STRESS is a reliability benchmarking framework designed to evaluate how computat
 | `stress/` | Python reference implementation |
 | `examples/` | Usage examples |
 | `tests/` | Python test suite |
+| `schema/` | JSON Schema definitions for report files |
 
 ## What This Repo Is NOT
 - Not a performance benchmark
@@ -41,25 +64,23 @@ cargo run -- --workload W1-A --profile SP-1 --seed 42 --runs 10 \
   --gds-levels 0.1,0.2,0.3 --isolation-duration 60.0 --c-total 5
 ```
 
-### Python
+### Python CLI
 
-```python
-from stress.runner import run_benchmark
-
-run_benchmark(
-    out_dir="report",
-    workload_id="W1-A",
-    workload_version="0.1",
-    stress_profile_id="SP-1",
-    stress_parameters={"SP-1": {"rate": 0.001}},
-    execution_environment={"os": "linux", "runtime": "python"},
-    master_seed=123,
-    n_runs=10,
-    gds_levels=[0.1, 0.2, 0.3],
-    isolation_duration_declared=120.0,
-    C_total=5,
-)
+```bash
+pip install -e .
+stress-benchmark --workload W1-A --profile SP-1 --seed 42 --runs 10 --out-dir report
 ```
+
+### Domain-Specific SRI
+
+STRESS supports domain-specific weighting profiles for SRI computation:
+
+| Profile | IST Weight | CFR Weight | Use Case |
+|---------|-----------|-----------|----------|
+| Equal (default) | 0.20 | 0.20 | General-purpose comparison |
+| Satellite/LEO | 0.35 | 0.10 | Isolation survival matters most |
+| Data Center | 0.10 | 0.35 | Cascade containment matters most |
+| Tactical Edge | 0.20 | 0.10 | Recovery and degradation balanced |
 
 ## Version History
 
