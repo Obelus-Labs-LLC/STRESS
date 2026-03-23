@@ -1,9 +1,8 @@
 # STRESS (System Threat Resilience & Extreme Stress Suite) — Research Assessment
 
-**Project:** `_backlog/Stress`
-**Repo:** `https://github.com/RocketShon/Stress.git` (also `Obelus-Labs-LLC/ocrb`)
+**Repo:** `https://github.com/Obelus-Labs-LLC/STRESS`
 **Version:** v0.2 (renamed from OCRB v0.1)
-**Status:** Frozen specification + working Python reference implementation
+**Status:** Frozen specification + Rust reference implementation (canonical) + Python reference implementation
 
 ---
 
@@ -37,7 +36,6 @@ Five stress parameters model environmental pressure:
   - W1-A: Stateless independent task processing (SHA256 hash chaining, deterministic)
   - W2-A: Stateful multi-stage pipeline with checkpointing, external dependency simulation, crash injection, autonomous recovery via checkpoint restart
 - **Statistical reporting**: Mean, std, 95% CI (normal approximation), N/A tracking, 10+ independent runs per configuration
-- **Four complete report outputs**: `report_demo/`, `report_full/`, `report_w1a_real/`, `report_w2a/` — all with manifest, per-run records, aggregate summary, disclosure
 
 ### Implementation Status (Updated)
 - **Stress injection layer**: Fully implemented (SP-1 through SP-5) in both Python and Rust
@@ -138,12 +136,11 @@ No existing framework combines: (a) multi-domain environmental stressors → (b)
 
 ---
 
-## 7. Where It Could Be Used Across Obelus Labs
+## 7. Standardization Path
 
-- **FabricOS**: Benchmark the OS's resilience to hardware faults (bit-flips in memory, NVMe errors, power interruption) during bare-metal operation. The workloads would be FabricOS subsystems
-- **Dell Server**: Stress-test services (Guardian API, Covenant index, Veritas cache) running simultaneously on constrained hardware (5.7GB RAM, no GPU)
-- **Covenant**: Benchmark LLM inference resilience when the GPU experiences transient faults or thermal throttling
-- **As a product**: Position as an open standard for compute resilience benchmarking. Publish to relevant standards bodies (IEEE, NIST). The spec-first approach is already correct — no vendor lock-in, binary compliance, reproducible results
+- Position as an open standard for compute resilience benchmarking
+- Publish to relevant standards bodies (IEEE, NIST)
+- The spec-first approach enables vendor-neutral adoption — no vendor lock-in, binary compliance, reproducible results
 
 ---
 
@@ -153,7 +150,7 @@ No existing framework combines: (a) multi-domain environmental stressors → (b)
 |-----------|--------|-------|
 | Concept | Strong | Fills a genuine gap between chaos engineering and hardware test standards |
 | Specification | Strong | Well-structured, rigorous, binary compliance |
-| Implementation | Partial | Metric pipeline works; stress injection layer is empty |
+| Implementation | Complete | Rust (canonical) and Python reference implementations with full stress injection (SP-1 through SP-5) |
 | Novelty | High | No existing framework combines multi-domain environmental stress + composite behavioral score |
 | Market Fit | Strong in niche | Space, military, critical infrastructure need this; mass market less clear |
-| Readiness | Pre-alpha | Can't benchmark real systems until stress injectors are implemented |
+| Readiness | Functional | Reference implementations produce valid benchmark reports; platform-specific injectors remain future work |
