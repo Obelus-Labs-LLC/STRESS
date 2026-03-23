@@ -9,6 +9,8 @@ pub struct ProxyValues {
     pub rec: Option<f64>,
     pub cfr: Option<f64>,
     pub sri: Option<f64>,
+    pub weighted_sri: Option<f64>,
+    pub weight_profile: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

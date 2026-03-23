@@ -9,7 +9,14 @@ description = "STRESS — System Threat Resilience & Extreme Stress Suite"
 readme = "readme.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
+authors = [
+    {name = "STRESS Contributors"},
+]
+keywords = ["benchmark", "resilience", "stress-testing", "reliability"]
 dependencies = []
+
+[project.scripts]
+stress-benchmark = "stress.cli:main"
 
 [project.optional-dependencies]
 test = ["pytest>=7.0"]

@@ -34,3 +34,13 @@ PROFILES = {
     "SP-1": SP_1,
     "SP-2": SP_2,
 }
+
+
+def get_profile(name: str) -> Dict[str, Any]:
+    """Return the stress parameter dict for a named profile.
+
+    Raises ``KeyError`` if *name* is not a known profile.
+    """
+    if name not in PROFILES:
+        raise KeyError(f"Unknown stress profile: {name!r}. Available: {list(PROFILES.keys())}")
+    return PROFILES[name]

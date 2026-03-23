@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "STRESS Run Record",
+  "type": "object",
+  "required": ["run_id", "workload_id", "seeds", "start_utc", "end_utc", "proxies", "evidence"],
+  "properties": {
+    "run_id": { "type": "string" },
+    "workload_id": { "type": "string", "enum": ["W1-A", "W2-A", "W3-A"] },
+    "seeds": {
+      "type": "object",
+      "required": ["sr1", "sr2", "sr3", "sr4", "sr5"],
+      "properties": {
+        "sr1": { "type": "integer" },
+        "sr2": { "type": "integer" },
+        "sr3": { "type": "integer" },
+        "sr4": { "type": "integer" },
+        "sr5": { "type": "integer" }
+      }
+    },
+    "start_utc": { "type": "number" },
+    "end_utc": { "type": "number" },
+    "proxies": {
+      "type": "object",
+      "properties": {
+        "gds": { "type": ["number", "null"] },
+        "arr": { "type": ["number", "null"] },
+        "ist": { "type": ["number", "null"] },
+        "rec": { "type": ["number", "null"] },
+        "cfr": { "type": ["number", "null"] },
+        "sri": { "type": ["number", "null"] },
+        "weighted_sri": { "type": ["number", "null"] },
+        "weight_profile": { "type": ["string", "null"] }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "stress_levels": { "type": ["array", "null"], "items": { "type": "number" } },
+        "completion_rates": { "type": ["array", "null"], "items": { "type": "number" } },
+        "Fr": { "type": ["integer", "null"] },
+        "Fa": { "type": ["integer", "null"] },
+        "isolation_duration": { "type": ["number", "null"] },
+        "survival_time": { "type": ["number", "null"] },
+        "E_base": { "type": ["number", "null"] },
+        "E_stress": { "type": ["number", "null"] },
+        "baseline_completion_ok": { "type": ["boolean", "null"] },
+        "C_total": { "type": ["integer", "null"] },
+        "C_local": { "type": ["integer", "null"] }
+      }
+    },
+    "na_reasons": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "events": {
+      "type": "array",
+      "items": { "type": "object" }
+    }
+  }
+}

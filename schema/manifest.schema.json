@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "STRESS Run Manifest",
+  "type": "object",
+  "required": ["stress_version", "timestamp_utc", "workload_id", "workload_version", "stress_profile_id", "stress_parameters", "seeds", "execution_environment"],
+  "properties": {
+    "stress_version": { "type": "string", "const": "v0.2" },
+    "timestamp_utc": { "type": "string", "format": "date-time" },
+    "workload_id": { "type": "string", "enum": ["W1-A", "W2-A", "W3-A"] },
+    "workload_version": { "type": "string" },
+    "stress_profile_id": { "type": "string" },
+    "stress_parameters": { "type": "object" },
+    "seeds": {
+      "type": "object",
+      "required": ["sr1", "sr2", "sr3", "sr4", "sr5"],
+      "properties": {
+        "sr1": { "type": "integer" },
+        "sr2": { "type": "integer" },
+        "sr3": { "type": "integer" },
+        "sr4": { "type": "integer" },
+        "sr5": { "type": "integer" }
+      }
+    },
+    "execution_environment": { "type": "object" }
+  }
+}

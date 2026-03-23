@@ -293,73 +293,122 @@ def _run_w2a_stressed(
     out_dir: str, gds_levels: Optional[List[float]],
     isolation_duration_declared: Optional[float],
 ) -> EventLog:
-    """Execute W2-A with stress injection. Fixes: IST timing, failure classification."""
+    """Execute W2-A with stress injection. Partitioned per GDS level."""
+    import shutil
+
     log = EventLog(run_id=f"run-{run_index:02d}", workload_id="W2-A")
     t_start = time.time()
     log.emit(EventType.RUN_START, t_utc=t_start)
 
     regime.start_all(t_start)
-    run_dir = str(Path(out_dir) / "w2_state" / f"run_{run_index:02d}")
 
-    # Fix: clear stale checkpoints from prior invocations
-    import shutil
-    if Path(run_dir).exists():
-        shutil.rmtree(run_dir)
-
-    # Track isolation via actual regime queries
-    isolation_logged = False
-
-    def external_call():
-        nonlocal isolation_logged
-        t_now = time.time()
-        if regime.is_isolated(t_now):
-            if not isolation_logged:
-                isolation_logged = True
-                log.emit(EventType.ISOLATION_START, t_utc=t_now)
-            raise RuntimeError("isolated")
-        if regime.is_packet_lost(t_now):
-            raise RuntimeError("packet_lost")
-        latency = regime.get_network_latency_ms(t_now)
-        if latency > 0:
-            time.sleep(min(latency / 1000.0, 0.01))  # Cap sleep for test speed
-
-    def should_crash(s: int, stage: int) -> bool:
-        t_now = time.time()
-        if not regime.is_available(t_now):
-            return True
-        return regime.should_inject_fault(t_now)
-
-    cfg = W2AConfig()
-    res = run_w2a(
-        run_dir=run_dir, seed=seed, cfg=cfg,
-        external_call=external_call, should_crash=should_crash,
-    )
-
-    t_end = time.time()
-
-    # Fix #10: only emit ISOLATION_END if isolation was entered AND workload survived past it
-    if isolation_logged:
-        if not res.failed:
-            log.emit(EventType.ISOLATION_END, t_utc=t_end)
-        # If failed during isolation, no ISOLATION_END — IST detects the IRREVERSIBLE failure
-
-    # GDS: run completion at each declared level
-    # Fix #3: for W2-A we still use single-run rate (multi-level would require multiple runs)
-    completion_rate = res.stages_completed / res.stages_total if res.stages_total else 0.0
     if gds_levels:
-        for s in gds_levels:
-            log.emit(EventType.WORK_UNIT_END, stress_level=s, completion_rate=completion_rate)
+        for level_idx, level in enumerate(gds_levels):
+            regime.radiation.set_fault_multiplier(1.0 + level * 10.0)
 
-    for j in range(res.restarts):
-        log.emit(EventType.FAILURE, failure_id=f"crash_{j}",
-                 failure_class=FailureClass.AUTONOMOUSLY_RECOVERED)
+            level_seed = (seed + level_idx * 997) & 0xFFFFFFFFFFFFFFFF
+            level_dir = str(Path(out_dir) / "w2_state" / f"run_{run_index:02d}" / f"level_{level_idx:02d}")
 
-    # Fix #6: terminal failure is IRREVERSIBLE, not RECOVERABLE_NOT_RECOVERED
-    if res.failed:
-        log.emit(EventType.FAILURE, failure_id="terminal",
-                 failure_class=FailureClass.IRREVERSIBLE)
+            if Path(level_dir).exists():
+                shutil.rmtree(level_dir)
 
-    log.emit(EventType.WORK_UNIT_END, work_done=res.stages_completed, resources_used=res.duration_s)
+            # Track isolation via actual regime queries
+            isolation_logged = False
+
+            def make_external_call(iso_state):
+                def external_call():
+                    nonlocal isolation_logged
+                    t_now = time.time()
+                    if regime.is_isolated(t_now):
+                        if not isolation_logged:
+                            isolation_logged = True
+                            log.emit(EventType.ISOLATION_START, t_utc=t_now)
+                        raise RuntimeError("isolated")
+                    if regime.is_packet_lost(t_now):
+                        raise RuntimeError("packet_lost")
+                    latency = regime.get_network_latency_ms(t_now)
+                    if latency > 0:
+                        time.sleep(min(latency / 1000.0, 0.01))
+                return external_call
+
+            def should_crash(s: int, stage: int) -> bool:
+                t_now = time.time()
+                if not regime.is_available(t_now):
+                    return True
+                return regime.should_inject_fault(t_now)
+
+            t_level = time.time()
+            cfg = W2AConfig()
+            res = run_w2a(
+                run_dir=level_dir, seed=level_seed, cfg=cfg,
+                external_call=make_external_call(None), should_crash=should_crash,
+            )
+
+            t_level_end = time.time()
+
+            if isolation_logged and not res.failed:
+                log.emit(EventType.ISOLATION_END, t_utc=t_level_end)
+
+            completion_rate = res.stages_completed / res.stages_total if res.stages_total else 0.0
+            log.emit(EventType.WORK_UNIT_END, stress_level=level,
+                     completion_rate=completion_rate, work_done=res.stages_completed,
+                     resources_used=t_level_end - t_level)
+
+            for j in range(res.restarts):
+                log.emit(EventType.FAILURE, failure_id=f"crash_{level_idx}_{j}",
+                         failure_class=FailureClass.AUTONOMOUSLY_RECOVERED)
+
+            if res.failed:
+                log.emit(EventType.FAILURE, failure_id=f"terminal_{level_idx}",
+                         failure_class=FailureClass.IRREVERSIBLE)
+    else:
+        run_dir = str(Path(out_dir) / "w2_state" / f"run_{run_index:02d}")
+
+        if Path(run_dir).exists():
+            shutil.rmtree(run_dir)
+
+        isolation_logged = False
+
+        def external_call():
+            nonlocal isolation_logged
+            t_now = time.time()
+            if regime.is_isolated(t_now):
+                if not isolation_logged:
+                    isolation_logged = True
+                    log.emit(EventType.ISOLATION_START, t_utc=t_now)
+                raise RuntimeError("isolated")
+            if regime.is_packet_lost(t_now):
+                raise RuntimeError("packet_lost")
+            latency = regime.get_network_latency_ms(t_now)
+            if latency > 0:
+                time.sleep(min(latency / 1000.0, 0.01))
+
+        def should_crash(s: int, stage: int) -> bool:
+            t_now = time.time()
+            if not regime.is_available(t_now):
+                return True
+            return regime.should_inject_fault(t_now)
+
+        cfg = W2AConfig()
+        res = run_w2a(
+            run_dir=run_dir, seed=seed, cfg=cfg,
+            external_call=external_call, should_crash=should_crash,
+        )
+
+        t_end = time.time()
+
+        if isolation_logged and not res.failed:
+            log.emit(EventType.ISOLATION_END, t_utc=t_end)
+
+        log.emit(EventType.WORK_UNIT_END, work_done=res.stages_completed, resources_used=res.duration_s)
+
+        for j in range(res.restarts):
+            log.emit(EventType.FAILURE, failure_id=f"crash_{j}",
+                     failure_class=FailureClass.AUTONOMOUSLY_RECOVERED)
+
+        if res.failed:
+            log.emit(EventType.FAILURE, failure_id="terminal",
+                     failure_class=FailureClass.IRREVERSIBLE)
 
     regime.stop_all()
     log.emit(EventType.RUN_END, t_utc=time.time())
@@ -473,9 +522,7 @@ This report was generated by the STRESS reference runner with real stress inject
 - 95% CI uses normal approximation. CI values are reported without clamping.
 
 ## Known Deviations
-- W2-A GDS: completion rate is measured from a single run per stress level declaration,
-  not from independent executions at each stress intensity. This is a deviation from the
-  multi-level execution procedure described in the spec.
+None.
 """
 
 

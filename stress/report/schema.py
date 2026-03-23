@@ -37,6 +37,8 @@ class ProxyValues:
     rec: Optional[float] = None
     cfr: Optional[float] = None
     sri: Optional[float] = None
+    weighted_sri: Optional[float] = None
+    weight_profile: Optional[str] = None
 
 
 @dataclass(frozen=True)

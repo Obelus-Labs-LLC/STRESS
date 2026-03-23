@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -94,6 +94,7 @@ pub fn run_benchmark(cfg: &BenchmarkConfig) -> Result<(), Box<dyn std::error::Er
             proxies: ProxyValues {
                 gds: gds_r.gds, arr: arr_r.arr, ist: ist_r.ist,
                 rec: rec_r.rec, cfr: cfr_r.cfr, sri: sri_r.sri,
+                weighted_sri: None, weight_profile: None,
             },
             evidence: ProxyEvidence {
                 stress_levels: gds_r.stress_levels.clone(),
@@ -263,64 +264,110 @@ fn run_w2a_stressed(
     log.emit_at(EventType::RunStart, t_start);
     regime.start_all(t_start);
 
-    let run_dir = format!("{}/w2_state/run_{run_index:02}", cfg.out_dir);
-
-    // Use RefCell to share regime across closures
-    let regime_cell = RefCell::new(regime);
-
-    let res = run_w2a(
-        &run_dir, seeds.sr2,
-        &W2aConfig { stage_work_us: 50, ..W2aConfig::default() },
-        || {
-            let t = now_secs();
-            let mut r = regime_cell.borrow_mut();
-            if r.is_isolated(t) {
-                return Err("isolated".into());
-            }
-            if r.is_packet_lost(t) {
-                return Err("packet_lost".into());
-            }
-            Ok(())
-        },
-        |_stage| {
-            let t = now_secs();
-            let mut r = regime_cell.borrow_mut();
-            if !r.is_available(t, 3600.0) { return true; }
-            r.should_inject_fault(t)
-        },
-    );
-
-    // Take regime back from RefCell for stop_all
-    let regime = regime_cell.into_inner();
-
-    // Emit events based on result
-    let completion_rate = if res.stages_total > 0 {
-        res.stages_completed as f64 / res.stages_total as f64
-    } else { 0.0 };
-
     if let Some(ref levels) = cfg.gds_levels {
-        for &s in levels {
+        for (level_idx, &level) in levels.iter().enumerate() {
+            regime.radiation.set_fault_multiplier(1.0 + level * 10.0);
+
+            let level_seed = seeds.sr2.wrapping_add(level_idx as u64 * 997);
+            let level_dir = format!(
+                "{}/w2_state/run_{run_index:02}/level_{level_idx:02}",
+                cfg.out_dir
+            );
+
+            let regime_cell = RefCell::new(&mut *regime);
+            let t_level = now_secs();
+
+            let res = run_w2a(
+                &level_dir, level_seed,
+                &W2aConfig { stage_work_us: 50, ..W2aConfig::default() },
+                || {
+                    let t = now_secs();
+                    let mut r = regime_cell.borrow_mut();
+                    if r.is_isolated(t) {
+                        return Err("isolated".into());
+                    }
+                    if r.is_packet_lost(t) {
+                        return Err("packet_lost".into());
+                    }
+                    Ok(())
+                },
+                |_stage| {
+                    let t = now_secs();
+                    let mut r = regime_cell.borrow_mut();
+                    if !r.is_available(t, 3600.0) { return true; }
+                    r.should_inject_fault(t)
+                },
+            );
+
+            // Take regime back from RefCell
+            let _ = regime_cell.into_inner();
+
+            let completion_rate = if res.stages_total > 0 {
+                res.stages_completed as f64 / res.stages_total as f64
+            } else { 0.0 };
+
             let e = log.emit(EventType::WorkUnitEnd);
-            e.stress_level = Some(s);
+            e.stress_level = Some(level);
             e.completion_rate = Some(completion_rate);
+            e.work_done = Some(res.stages_completed as f64);
+            e.resources_used = Some(now_secs() - t_level);
+
+            for j in 0..res.restarts {
+                let e = log.emit(EventType::Failure);
+                e.failure_id = Some(format!("crash_{level_idx}_{j}"));
+                e.failure_class = Some(FailureClass::AutonomouslyRecovered);
+            }
+
+            if res.failed {
+                let e = log.emit(EventType::Failure);
+                e.failure_id = Some(format!("terminal_{level_idx}"));
+                e.failure_class = Some(FailureClass::Irreversible);
+            }
+        }
+    } else {
+        let run_dir = format!("{}/w2_state/run_{run_index:02}", cfg.out_dir);
+        let regime_cell = RefCell::new(&mut *regime);
+
+        let res = run_w2a(
+            &run_dir, seeds.sr2,
+            &W2aConfig { stage_work_us: 50, ..W2aConfig::default() },
+            || {
+                let t = now_secs();
+                let mut r = regime_cell.borrow_mut();
+                if r.is_isolated(t) {
+                    return Err("isolated".into());
+                }
+                if r.is_packet_lost(t) {
+                    return Err("packet_lost".into());
+                }
+                Ok(())
+            },
+            |_stage| {
+                let t = now_secs();
+                let mut r = regime_cell.borrow_mut();
+                if !r.is_available(t, 3600.0) { return true; }
+                r.should_inject_fault(t)
+            },
+        );
+
+        let _ = regime_cell.into_inner();
+
+        let e = log.emit(EventType::WorkUnitEnd);
+        e.work_done = Some(res.stages_completed as f64);
+        e.resources_used = Some(res.duration_s);
+
+        for j in 0..res.restarts {
+            let e = log.emit(EventType::Failure);
+            e.failure_id = Some(format!("crash_{j}"));
+            e.failure_class = Some(FailureClass::AutonomouslyRecovered);
+        }
+
+        if res.failed {
+            let e = log.emit(EventType::Failure);
+            e.failure_id = Some("terminal".into());
+            e.failure_class = Some(FailureClass::Irreversible);
         }
     }
-
-    for j in 0..res.restarts {
-        let e = log.emit(EventType::Failure);
-        e.failure_id = Some(format!("crash_{j}"));
-        e.failure_class = Some(FailureClass::AutonomouslyRecovered);
-    }
-
-    if res.failed {
-        let e = log.emit(EventType::Failure);
-        e.failure_id = Some("terminal".into());
-        e.failure_class = Some(FailureClass::Irreversible);
-    }
-
-    let e = log.emit(EventType::WorkUnitEnd);
-    e.work_done = Some(res.stages_completed as f64);
-    e.resources_used = Some(res.duration_s);
 
     regime.stop_all();
     log.emit(EventType::RunEnd);
@@ -332,13 +379,14 @@ fn run_w2a_stressed(
 fn run_w3a_stressed(
     run_index: usize, regime: &mut StressRegime, cfg: &BenchmarkConfig,
 ) -> EventLog {
-    let mut log = EventLog::new(&format!("run-{run_index:02}"), "W3-A");
+    let log = RefCell::new(EventLog::new(&format!("run-{run_index:02}"), "W3-A"));
     let t_start = now_secs();
-    log.emit_at(EventType::RunStart, t_start);
+    log.borrow_mut().emit_at(EventType::RunStart, t_start);
     regime.start_all(t_start);
 
     let cfg3 = W3aConfig::default();
     let regime_cell = RefCell::new(regime);
+    let isolation_active = Cell::new(false);
 
     let res = run_w3a(
         &cfg3,
@@ -350,7 +398,15 @@ fn run_w3a_stressed(
         },
         || {
             let t = now_secs();
-            regime_cell.borrow().is_isolated(t)
+            let isolated = regime_cell.borrow().is_isolated(t);
+            if isolated && !isolation_active.get() {
+                isolation_active.set(true);
+                log.borrow_mut().emit_at(EventType::IsolationStart, t);
+            } else if !isolated && isolation_active.get() {
+                isolation_active.set(false);
+                log.borrow_mut().emit_at(EventType::IsolationEnd, t);
+            }
+            isolated
         },
         || {
             let t = now_secs();
@@ -359,23 +415,11 @@ fn run_w3a_stressed(
     );
 
     let regime = regime_cell.into_inner();
+    let mut log = log.into_inner();
 
-    // Post-run: emit isolation events based on regime config
-    if regime.isolation.enabled() {
-        let offset = regime.isolation.trigger_offset_s();
-        let dur = regime.isolation.max_duration_s();
-        let t_end = now_secs();
-        let iso_start = t_start + offset;
-        let iso_end = iso_start + dur;
-
-        // Only emit if workload ran past the isolation start
-        if t_end > iso_start {
-            log.emit_at(EventType::IsolationStart, iso_start);
-            if t_end >= iso_end {
-                log.emit_at(EventType::IsolationEnd, iso_end);
-            }
-            // If t_end < iso_end, workload ended during isolation — no ISOLATION_END
-        }
+    // Close any still-open isolation window
+    if isolation_active.get() {
+        log.emit(EventType::IsolationEnd);
     }
 
     // GDS evidence
@@ -453,5 +497,5 @@ This report was generated by the STRESS Rust reference runner.
 - Baseline runs use real workload execution with all stressors disabled.
 
 ## Known Deviations
-- W2-A GDS: completion rate from single run stamped across declared levels.
+None.
 "#;

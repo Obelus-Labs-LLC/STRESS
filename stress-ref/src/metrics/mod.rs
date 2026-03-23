@@ -4,3 +4,4 @@ pub mod gds;
 pub mod ist;
 pub mod rec;
 pub mod sri;
+pub mod weight_profiles;

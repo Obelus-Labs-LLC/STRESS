@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "STRESS Aggregate Summary",
+  "type": "object",
+  "required": ["gds", "arr", "ist", "rec", "cfr", "sri"],
+  "properties": {
+    "gds": { "$ref": "#/$defs/AggregateStats" },
+    "arr": { "$ref": "#/$defs/AggregateStats" },
+    "ist": { "$ref": "#/$defs/AggregateStats" },
+    "rec": { "$ref": "#/$defs/AggregateStats" },
+    "cfr": { "$ref": "#/$defs/AggregateStats" },
+    "sri": { "$ref": "#/$defs/AggregateStats" }
+  },
+  "$defs": {
+    "AggregateStats": {
+      "type": "object",
+      "required": ["mean", "std", "ci95_low", "ci95_high", "n_included", "n_na"],
+      "properties": {
+        "mean": { "type": ["number", "null"] },
+        "std": { "type": ["number", "null"] },
+        "ci95_low": { "type": ["number", "null"] },
+        "ci95_high": { "type": ["number", "null"] },
+        "n_included": { "type": "integer" },
+        "n_na": { "type": "integer" }
+      }
+    }
+  }
+}

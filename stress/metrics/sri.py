@@ -43,3 +43,41 @@ def compute_sri(
     # Clamp to [0, 100]
     sri = max(0.0, min(100.0, sri))
     return SRIResult(sri=sri, weights=weights, na_reason=None)
+
+
+# ---------------------------------------------------------------------------
+# Domain weighting profiles
+# ---------------------------------------------------------------------------
+
+WEIGHT_PROFILES: Dict[str, Dict[str, float]] = {
+    "satellite-leo": {
+        "gds": 0.20, "arr": 0.20, "ist": 0.35, "rec": 0.15, "cfr": 0.10,
+    },
+    "data-center": {
+        "gds": 0.20, "arr": 0.20, "ist": 0.10, "rec": 0.15, "cfr": 0.35,
+    },
+    "tactical-edge": {
+        "gds": 0.25, "arr": 0.25, "ist": 0.20, "rec": 0.20, "cfr": 0.10,
+    },
+}
+
+
+def compute_weighted_sri(
+    proxies: Dict[str, Optional[float]],
+    profile_name: str,
+) -> SRIResult:
+    """
+    Compute weighted SRI using a named domain weighting profile.
+
+    SRI = (sum of w_i * proxy_i) * 100, clamped to [0, 100].
+    Returns N/A if any required proxy is missing/None or weights don't sum to ~1.0.
+    """
+    if profile_name not in WEIGHT_PROFILES:
+        return SRIResult(
+            sri=None,
+            weights={},
+            na_reason=f"unknown profile: {profile_name}",
+        )
+
+    weights = WEIGHT_PROFILES[profile_name]
+    return compute_sri(proxies, weights=weights)
