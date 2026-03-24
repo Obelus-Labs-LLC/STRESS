@@ -107,3 +107,7 @@ STRESS v0.2 supersedes OCRB (Orbital Compute Readiness Benchmark) v0.1.
 ---
 
 *Maintained by Obelus Labs, LLC*
+
+---
+
+If this framework helped your research, consider giving it a star — it helps others discover it.
