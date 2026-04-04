@@ -42,12 +42,25 @@ run_benchmark(
 
 | Path | Description |
 |------|-------------|
-| `docs/` | Normative specification, workload definitions, stress profiles, glossary |
-| `stress-ref/` | **Rust reference implementation** (canonical) |
+| `docs/specification-v0.2.md` | Normative specification |
+| `docs/STRESS_v0_Reference_Workloads.md` | W1-A, W2-A, W3-A workload definitions |
+| `docs/STRESS_v0_Reference_Stress_Profiles.md` | SP-0 through SP-5 profiles |
+| `docs/metric-independence.md` | GDS/ARR independence proof |
+| `docs/validation-methodology.md` | SRI correlation validation protocol |
+| `docs/glossary.md` | Term definitions |
+| `docs/historical/` | Archived OCRB v0.1 specification |
+| `stress-ref/` | **Rust reference implementation** (canonical, 34 tests) |
 | `stress/` | Python reference implementation |
-| `examples/` | Usage examples |
 | `tests/` | Python test suite |
-| `schema/` | JSON Schema definitions for report files |
+| `examples/hello_benchmark.py` | Minimal "hello benchmark" walkthrough |
+| `examples/run_w1a_sp1.py` | W1-A with SP-1 radiation profile |
+| `examples/run_w3a_sp1.py` | W3-A distributed workload example |
+| `schema/run-record.schema.json` | Per-run JSON report schema |
+| `schema/aggregate.schema.json` | Aggregate statistics schema |
+| `schema/manifest.schema.json` | Benchmark manifest schema |
+| `STRESS_v0_Implementation_Guide.md` | Implementation reference |
+| `STRESS_FRAMEWORK_RESEARCH.md` | Background research and design rationale |
+| `CONTRIBUTING.md` | Contribution guidelines |
 
 ## What This Repo Is NOT
 - Not a performance benchmark
@@ -71,9 +84,19 @@ pip install -e .
 stress-benchmark --workload W1-A --profile SP-1 --seed 42 --runs 10 --out-dir report
 ```
 
+### SRI Aggregation
+
+SRI uses the **geometric mean** of five behavioral proxies (GDS, ARR, IST, REC, CFR), each normalized to [0,1]:
+
+```
+SRI = (GDS × ARR × IST × REC × CFR)^(1/5) × 100
+```
+
+Geometric mean ensures zero resilience in any single dimension drives SRI toward 0 — a system cannot hide catastrophic failure behind strong scores elsewhere. GDS also reports **monotonicity** and **smoothness** metadata to distinguish graceful degradation from cliff-drops.
+
 ### Domain-Specific SRI
 
-STRESS supports domain-specific weighting profiles for SRI computation:
+STRESS supports domain-specific weighting profiles for SRI computation (weighted geometric mean):
 
 | Profile | IST Weight | CFR Weight | Use Case |
 |---------|-----------|-----------|----------|

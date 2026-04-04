@@ -13,7 +13,43 @@ class GDSResult:
     n_levels: int
     stress_levels: List[float]
     completion_rates: List[float]
+    monotonicity: Optional[float] = None  # Fraction of pairs with C_{i+1} <= C_i
+    smoothness: Optional[float] = None    # Entropy-based step uniformity [0,1]
     na_reason: Optional[str] = None
+
+
+def _compute_monotonicity(rates: List[float]) -> Optional[float]:
+    """Fraction of adjacent pairs where C_{i+1} <= C_i. Range [0,1]."""
+    if len(rates) < 2:
+        return None
+    pairs = len(rates) - 1
+    mono = sum(1 for i in range(pairs) if rates[i + 1] <= rates[i])
+    return mono / pairs
+
+
+def _compute_smoothness(rates: List[float]) -> Optional[float]:
+    """Entropy-based uniformity of degradation steps. Range [0,1].
+    1.0 = perfectly uniform degradation. 0.0 = all degradation in one cliff-drop."""
+    if len(rates) < 2:
+        return None
+
+    steps = [max(0.0, rates[i] - rates[i + 1]) for i in range(len(rates) - 1)]
+    total_drop = sum(steps)
+
+    if total_drop == 0.0:
+        return 1.0  # No degradation = trivially smooth
+
+    nonzero = [s for s in steps if s > 0.0]
+    n_nonzero = len(nonzero)
+
+    if n_nonzero <= 1:
+        return 1.0 if len(steps) == 1 else 0.0
+
+    p = [s / total_drop for s in nonzero]
+    H = -sum(pi * math.log(pi) for pi in p)
+    H_max = math.log(n_nonzero)
+
+    return H / H_max if H_max > 0 else 1.0
 
 
 def compute_gds(
@@ -94,10 +130,15 @@ def compute_gds(
     s_sorted = [p[0] for p in paired]
     c_sorted = [p[1] for p in paired]
 
+    mono = _compute_monotonicity(c_sorted)
+    smooth = _compute_smoothness(c_sorted)
+
     return GDSResult(
         gds=gds,
         n_levels=n,
         stress_levels=s_sorted,
         completion_rates=c_sorted,
+        monotonicity=mono,
+        smoothness=smooth,
         na_reason=None,
     )

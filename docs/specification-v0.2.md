@@ -124,10 +124,18 @@ SRI values are meaningful only within the specific stress profile under which th
 ### 5.1 SRI Calculation
 
 ```
-SRI = (GDS + ARR + IST + REC + CFR) / 5 × 100
+SRI = (GDS × ARR × IST × REC × CFR)^(1/5) × 100
 ```
 
 Where each proxy is normalized to [0, 1] before aggregation.
+
+SRI uses the **geometric mean** rather than arithmetic mean. This ensures that zero resilience in any single dimension drives SRI toward 0, preventing weak-link masking. A system that scores excellently on four proxies but catastrophically on one cannot hide that failure behind the others.
+
+For weighted (domain-specific) SRI:
+
+```
+SRI = exp(Σ wⱼ × ln(BPⱼ)) × 100
+```
 
 *Migration Note: OCRB v0.1 used ORI [0, 1]. STRESS v0.2 uses SRI [0, 100]. Multiply ORI by 100 to convert.*
 

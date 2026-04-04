@@ -15,8 +15,8 @@ pub struct WeightProfile {
     pub weights: BTreeMap<String, f64>,
 }
 
-/// Compute weighted SRI using domain-specific proxy weights.
-/// SRI = (sum of w_i * proxy_i) * 100, clamped to [0, 100].
+/// Compute weighted SRI using domain-specific proxy weights (weighted geometric mean).
+/// SRI = exp(sum(w_i * ln(proxy_i))) * 100, clamped to [0, 100].
 pub fn compute_weighted_sri(
     proxies: &BTreeMap<&str, Option<f64>>,
     profile: &WeightProfile,
@@ -40,19 +40,27 @@ pub fn compute_weighted_sri(
         return SriResult { sri: None, na_reason: Some(format!("weights sum to {}, expected 1.0", weight_sum)) };
     }
 
-    let weighted_sum: f64 = required.iter()
+    // Zero proxy -> SRI = 0
+    if required.iter().any(|&k| proxies.get(k).unwrap().unwrap() == 0.0) {
+        return SriResult { sri: Some(0.0), na_reason: None };
+    }
+
+    // Weighted geometric mean: exp(sum(w_i * ln(proxy_i))) * 100
+    let log_sum: f64 = required.iter()
         .map(|&k| {
             let value = proxies.get(k).unwrap().unwrap();
             let weight = profile.weights.get(k).copied().unwrap_or(0.2);
-            value * weight
+            weight * value.ln()
         })
         .sum();
 
-    let sri = (weighted_sum * 100.0).clamp(0.0, 100.0);
+    let sri = log_sum.exp() * 100.0;
+    let sri = sri.clamp(0.0, 100.0);
     SriResult { sri: Some(sri), na_reason: None }
 }
 
-/// SRI = (sum of proxies / 5) * 100, on [0, 100] scale per spec v0.2.
+/// SRI via geometric mean: (GDS * ARR * IST * REC * CFR)^(1/5) * 100.
+/// Geometric mean ensures zero resilience in any dimension drives SRI toward 0.
 /// N/A if any proxy is N/A.
 pub fn compute_sri(proxies: &BTreeMap<&str, Option<f64>>) -> SriResult {
     let required = ["gds", "arr", "ist", "rec", "cfr"];
@@ -79,12 +87,20 @@ pub fn compute_sri(proxies: &BTreeMap<&str, Option<f64>>) -> SriResult {
         };
     }
 
-    let sum: f64 = required
+    let values: Vec<f64> = required
         .iter()
         .map(|k| proxies.get(k).unwrap().unwrap())
-        .sum();
+        .collect();
 
-    let sri = ((sum / 5.0) * 100.0).clamp(0.0, 100.0);
+    // Zero proxy -> SRI = 0 (zero resilience in any dimension = zero overall)
+    if values.iter().any(|&v| v == 0.0) {
+        return SriResult { sri: Some(0.0), na_reason: None };
+    }
+
+    // Geometric mean: (product)^(1/5) * 100
+    let log_sum: f64 = values.iter().map(|v| v.ln()).sum::<f64>();
+    let sri = (log_sum / 5.0).exp() * 100.0;
+    let sri = sri.clamp(0.0, 100.0);
 
     SriResult {
         sri: Some(sri),
@@ -119,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn weighted_average() {
+    fn geometric_mean() {
         let mut proxies = BTreeMap::new();
         proxies.insert("gds", Some(0.8));
         proxies.insert("arr", Some(0.6));
@@ -127,8 +143,20 @@ mod tests {
         proxies.insert("rec", Some(0.4));
         proxies.insert("cfr", Some(0.2));
         let result = compute_sri(&proxies);
-        let expected = ((0.8 + 0.6 + 1.0 + 0.4 + 0.2) / 5.0) * 100.0;
+        let expected = (0.8_f64 * 0.6 * 1.0 * 0.4 * 0.2).powf(1.0 / 5.0) * 100.0;
         assert!((result.sri.unwrap() - expected).abs() < 0.1);
+    }
+
+    #[test]
+    fn zero_proxy_means_zero_sri() {
+        let mut proxies = BTreeMap::new();
+        proxies.insert("gds", Some(1.0));
+        proxies.insert("arr", Some(1.0));
+        proxies.insert("ist", Some(1.0));
+        proxies.insert("rec", Some(1.0));
+        proxies.insert("cfr", Some(0.0));
+        let result = compute_sri(&proxies);
+        assert_eq!(result.sri, Some(0.0));
     }
 
     #[test]

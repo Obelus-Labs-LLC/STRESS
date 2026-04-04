@@ -20,10 +20,12 @@ ARR captures the system's ability to self-heal from recoverable faults. An ARR o
 
 ### Shared input events
 
-In W1-A, when `should_inject_fault()` returns true:
+In both the Python and Rust reference implementations, when `should_inject_fault()` returns true in W1-A:
 - A `Failure` event with `FailureClass::AutonomouslyRecovered` is emitted
-- The task is NOT completed (`continue` skips work)
-- `tasks_completed` is NOT incremented
+- A `ComponentAffected` event is emitted for the task
+- The task is NOT completed (`continue` skips the work execution)
+- Neither `tasks_completed` nor `total_work` is incremented
+- Recovery means the system survived the fault, not that the work was done
 
 This means:
 - **GDS impact**: The task was skipped, so `completion_rate` decreases. More faults = lower GDS.

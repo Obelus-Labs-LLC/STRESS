@@ -193,15 +193,19 @@ Let weights **wⱼ** satisfy:
 
 ```
 
-Canonical STRESS v0 weighting uses equal weights:
+Canonical STRESS v0 weighting uses equal weights with geometric mean:
 
 ```
 
-SRI = (1 / 5) × Σ BPⱼ
+SRI = (∏ BPⱼ)^(1/5) × 100
 
 ```
 
-Alternate weightings **MAY** be used for exploratory analysis but **MUST NOT** be presented as canonical STRESS scores.
+Or equivalently: `SRI = exp((1/5) × Σ ln(BPⱼ)) × 100`
+
+Geometric mean ensures that zero resilience in any single dimension drives SRI toward 0, preventing weak-link masking that arithmetic aggregation would allow.
+
+Alternate weightings **MAY** be used for exploratory analysis but **MUST NOT** be presented as canonical STRESS scores. Weighted SRI uses the weighted geometric mean: `SRI = exp(Σ wⱼ × ln(BPⱼ)) × 100`.
 
 ---
 

@@ -263,8 +263,8 @@ def _run_w1a_stressed(
                     log.emit(EventType.FAILURE, failure_id=f"fault_{level_idx}_{task}",
                              failure_class=FailureClass.AUTONOMOUSLY_RECOVERED)
                     log.emit(EventType.COMPONENT_AFFECTED, component_id=f"task-{task}")
-                    tasks_completed += 1
-                    total_work += 1000
+                    # Fault occurred — task NOT completed. Recovery means the
+                    # system survived, not that the work was done.
                     continue
 
                 res = run_w1a(tasks=1, work_units_per_task=2000, seed=seed + task + level_idx * 1000)
@@ -419,7 +419,8 @@ def _run_w3a_stressed(
     run_index: int, seed: int, regime: StressRegime,
     gds_levels: Optional[List[float]], C_total: Optional[int],
 ) -> EventLog:
-    """Execute W3-A distributed coordination with stress injection."""
+    """Execute W3-A distributed coordination with stress injection.
+    Runs independently per GDS level with scaled fault intensity."""
     log = EventLog(run_id=f"run-{run_index:02d}", workload_id="W3-A")
     t_start = time.time()
     log.emit(EventType.RUN_START, t_utc=t_start)
@@ -427,76 +428,117 @@ def _run_w3a_stressed(
     regime.start_all(t_start)
     cfg = W3AConfig()
 
-    def should_kill_node(node_id: int, round_num: int) -> bool:
-        t = time.time()
-        if not regime.is_available(t):
-            return True
-        return regime.should_inject_fault(t)
-
-    isolation_fn = lambda t: regime.is_isolated(t)
-    packet_loss_fn = lambda t: regime.is_packet_lost(t)
-
-    # Track isolation reactively — only emit events when isolation actually occurs
     isolation_active = False
-    isolation_start_t = None
-
-    orig_isolation_fn = lambda t: regime.is_isolated(t)
-
-    def tracked_isolation_fn(t: float) -> bool:
-        nonlocal isolation_active, isolation_start_t
-        isolated = regime.is_isolated(t)
-        if isolated and not isolation_active:
-            isolation_active = True
-            isolation_start_t = t
-            log.emit(EventType.ISOLATION_START, t_utc=t)
-        elif not isolated and isolation_active:
-            isolation_active = False
-            log.emit(EventType.ISOLATION_END, t_utc=t)
-        return isolated
-
-    res = run_w3a(
-        seed=seed, cfg=cfg,
-        should_kill_node=should_kill_node,
-        isolation_fn=tracked_isolation_fn, packet_loss_fn=packet_loss_fn,
-    )
-
-    t_end = time.time()
-    # Close any open isolation window
-    if isolation_active:
-        log.emit(EventType.ISOLATION_END, t_utc=t_end)
-
-    # GDS evidence
-    if res.elections_total > 0:
-        completion_rate = res.elections_successful / res.elections_total
-    else:
-        completion_rate = 0.0
+    total_work = 0.0
+    total_duration = 0.0
 
     if gds_levels:
-        for s in gds_levels:
-            log.emit(EventType.WORK_UNIT_END, stress_level=s, completion_rate=completion_rate)
+        for level_idx, level in enumerate(gds_levels):
+            regime.radiation.set_fault_multiplier(1.0 + level * 10.0)
+            level_seed = (seed + level_idx * 997) & 0xFFFFFFFF
+            t_level = time.time()
 
-    # ARR evidence: each failed node's failure is resolved if the cluster
-    # successfully re-elects. Emit matched pairs for correct ARR counting.
-    if res.nodes_failed and res.elections_successful > 0:
-        # Cluster recovered — each node failure was autonomously resolved
+            def should_kill_node(node_id: int, round_num: int) -> bool:
+                t = time.time()
+                if not regime.is_available(t):
+                    return True
+                return regime.should_inject_fault(t)
+
+            def tracked_isolation_fn(t: float) -> bool:
+                nonlocal isolation_active
+                isolated = regime.is_isolated(t)
+                if isolated and not isolation_active:
+                    isolation_active = True
+                    log.emit(EventType.ISOLATION_START, t_utc=t)
+                elif not isolated and isolation_active:
+                    isolation_active = False
+                    log.emit(EventType.ISOLATION_END, t_utc=t)
+                return isolated
+
+            res = run_w3a(
+                seed=level_seed, cfg=cfg,
+                should_kill_node=should_kill_node,
+                isolation_fn=tracked_isolation_fn,
+                packet_loss_fn=lambda t: regime.is_packet_lost(t),
+            )
+
+            t_level_end = time.time()
+
+            completion_rate = (res.elections_successful / res.elections_total
+                               if res.elections_total > 0 else 0.0)
+            log.emit(EventType.WORK_UNIT_END, stress_level=level,
+                     completion_rate=completion_rate, work_done=res.work_done,
+                     resources_used=t_level_end - t_level)
+
+            # ARR evidence per level
+            if res.nodes_failed and res.elections_successful > 0:
+                for nid in res.nodes_failed:
+                    log.emit(EventType.FAILURE, failure_id=f"node_{nid}_crash_L{level_idx}",
+                             failure_class=FailureClass.AUTONOMOUSLY_RECOVERED)
+            elif res.nodes_failed:
+                for nid in res.nodes_failed:
+                    log.emit(EventType.FAILURE, failure_id=f"node_{nid}_crash_L{level_idx}",
+                             failure_class=FailureClass.RECOVERABLE_NOT_RECOVERED)
+
+            if res.safety_violations > 0:
+                log.emit(EventType.FAILURE, failure_id=f"safety_violation_L{level_idx}",
+                         failure_class=FailureClass.IRREVERSIBLE)
+
+            # CFR evidence per level
+            for nid in res.nodes_failed:
+                log.emit(EventType.COMPONENT_AFFECTED, component_id=f"node-{nid}")
+
+            total_work += res.work_done
+            total_duration += t_level_end - t_level
+    else:
+        def should_kill_node(node_id: int, round_num: int) -> bool:
+            t = time.time()
+            if not regime.is_available(t):
+                return True
+            return regime.should_inject_fault(t)
+
+        def tracked_isolation_fn(t: float) -> bool:
+            nonlocal isolation_active
+            isolated = regime.is_isolated(t)
+            if isolated and not isolation_active:
+                isolation_active = True
+                log.emit(EventType.ISOLATION_START, t_utc=t)
+            elif not isolated and isolation_active:
+                isolation_active = False
+                log.emit(EventType.ISOLATION_END, t_utc=t)
+            return isolated
+
+        res = run_w3a(
+            seed=seed, cfg=cfg,
+            should_kill_node=should_kill_node,
+            isolation_fn=tracked_isolation_fn,
+            packet_loss_fn=lambda t: regime.is_packet_lost(t),
+        )
+
+        if res.nodes_failed and res.elections_successful > 0:
+            for nid in res.nodes_failed:
+                log.emit(EventType.FAILURE, failure_id=f"node_{nid}_crash",
+                         failure_class=FailureClass.AUTONOMOUSLY_RECOVERED)
+        elif res.nodes_failed:
+            for nid in res.nodes_failed:
+                log.emit(EventType.FAILURE, failure_id=f"node_{nid}_crash",
+                         failure_class=FailureClass.RECOVERABLE_NOT_RECOVERED)
+
+        if res.safety_violations > 0:
+            log.emit(EventType.FAILURE, failure_id="safety_violation",
+                     failure_class=FailureClass.IRREVERSIBLE)
+
         for nid in res.nodes_failed:
-            log.emit(EventType.FAILURE, failure_id=f"node_{nid}_crash",
-                     failure_class=FailureClass.AUTONOMOUSLY_RECOVERED)
-    elif res.nodes_failed:
-        # Cluster did NOT recover — nodes remain dead
-        for nid in res.nodes_failed:
-            log.emit(EventType.FAILURE, failure_id=f"node_{nid}_crash",
-                     failure_class=FailureClass.RECOVERABLE_NOT_RECOVERED)
+            log.emit(EventType.COMPONENT_AFFECTED, component_id=f"node-{nid}")
 
-    if res.safety_violations > 0:
-        log.emit(EventType.FAILURE, failure_id="safety_violation",
-                 failure_class=FailureClass.IRREVERSIBLE)
+        total_work = res.work_done
+        total_duration = res.duration_s
 
-    # CFR evidence
-    for nid in res.nodes_failed:
-        log.emit(EventType.COMPONENT_AFFECTED, component_id=f"node-{nid}")
+    # Close any open isolation window
+    if isolation_active:
+        log.emit(EventType.ISOLATION_END, t_utc=time.time())
 
-    log.emit(EventType.WORK_UNIT_END, work_done=res.work_done, resources_used=res.duration_s)
+    log.emit(EventType.WORK_UNIT_END, work_done=total_work, resources_used=total_duration)
 
     regime.stop_all()
     log.emit(EventType.RUN_END, t_utc=time.time())
@@ -516,10 +558,10 @@ This report was generated by the STRESS reference runner with real stress inject
 - Stress injection uses SP-1 (radiation/Poisson), SP-2 (thermal/sinusoidal), SP-3 (power/duty-cycle),
   SP-4 (network/jitter+loss), and SP-5 (isolation/time-window).
 - Baseline (SP-0) runs use real workload execution with all stressors disabled.
-- SRI is reported on [0, 100] scale per STRESS v0.2 specification.
+- SRI is reported on [0, 100] scale per STRESS v0.2 specification using geometric mean aggregation.
 
 ## Statistical Notes
-- 95% CI uses normal approximation. CI values are reported without clamping.
+- 95% CI uses t-distribution for n < 30, normal approximation for n >= 30. CI values are reported without clamping.
 
 ## Known Deviations
 None.

@@ -60,7 +60,7 @@ After running STRESS against both systems under identical stress profiles (SP-1,
 | Criterion | Threshold |
 |-----------|-----------|
 | Rank correlation per proxy | >= 0.7 |
-| SRI difference (Redis - SQLite) | >= 20 points |
+| SRI difference (Redis - SQLite) | >= 15 points (geometric mean produces lower absolute scores than arithmetic) |
 | Proxy ordering | Redis ARR > SQLite ARR, Redis IST > SQLite IST |
 | Directional consistency | Higher stress profile -> lower SRI for both systems |
 

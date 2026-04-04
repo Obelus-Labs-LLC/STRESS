@@ -32,3 +32,40 @@ def test_no_levels_na():
     result = compute_gds(log.events)
     assert result.gds is None
     assert result.na_reason is not None
+
+
+def test_smoothness_uniform_degradation():
+    """Uniform steps {1.0, 0.8, 0.6} -> smoothness = 1.0"""
+    log = _make_log([(0.1, 1.0), (0.2, 0.8), (0.3, 0.6)])
+    result = compute_gds(log.events, expected_levels=[0.1, 0.2, 0.3])
+    assert result.smoothness is not None
+    assert abs(result.smoothness - 1.0) < 0.01
+
+
+def test_smoothness_cliff_drop():
+    """Cliff {1.0, 1.0, 0.4} -> smoothness = 0.0"""
+    log = _make_log([(0.1, 1.0), (0.2, 1.0), (0.3, 0.4)])
+    result = compute_gds(log.events, expected_levels=[0.1, 0.2, 0.3])
+    assert result.smoothness is not None
+    assert abs(result.smoothness - 0.0) < 0.01
+
+
+def test_monotonicity_decreasing():
+    """Fully non-increasing -> monotonicity = 1.0"""
+    log = _make_log([(0.1, 1.0), (0.2, 0.8), (0.3, 0.6)])
+    result = compute_gds(log.events, expected_levels=[0.1, 0.2, 0.3])
+    assert result.monotonicity == 1.0
+
+
+def test_monotonicity_non_monotonic():
+    """One increase out of two pairs -> monotonicity = 0.5"""
+    log = _make_log([(0.1, 0.5), (0.2, 0.8), (0.3, 0.6)])
+    result = compute_gds(log.events, expected_levels=[0.1, 0.2, 0.3])
+    assert abs(result.monotonicity - 0.5) < 0.01
+
+
+def test_no_degradation_smoothness():
+    """No degradation {1.0, 1.0, 1.0} -> smoothness = 1.0"""
+    log = _make_log([(0.1, 1.0), (0.2, 1.0), (0.3, 1.0)])
+    result = compute_gds(log.events, expected_levels=[0.1, 0.2, 0.3])
+    assert result.smoothness == 1.0

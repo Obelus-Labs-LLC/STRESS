@@ -375,96 +375,169 @@ fn run_w2a_stressed(
 }
 
 // --- W3-A Stressed ---
+// Runs independently per GDS level with scaled fault intensity.
 
 fn run_w3a_stressed(
     run_index: usize, regime: &mut StressRegime, cfg: &BenchmarkConfig,
 ) -> EventLog {
-    let log = RefCell::new(EventLog::new(&format!("run-{run_index:02}"), "W3-A"));
+    let mut log = EventLog::new(&format!("run-{run_index:02}"), "W3-A");
     let t_start = now_secs();
-    log.borrow_mut().emit_at(EventType::RunStart, t_start);
+    log.emit_at(EventType::RunStart, t_start);
     regime.start_all(t_start);
 
     let cfg3 = W3aConfig::default();
-    let regime_cell = RefCell::new(regime);
     let isolation_active = Cell::new(false);
+    let mut total_work = 0.0f64;
+    let mut total_duration = 0.0f64;
 
-    let res = run_w3a(
-        &cfg3,
-        |_node_id, _round| {
-            let t = now_secs();
-            let mut r = regime_cell.borrow_mut();
-            if !r.is_available(t, 3600.0) { return true; }
-            r.should_inject_fault(t)
-        },
-        || {
-            let t = now_secs();
-            let isolated = regime_cell.borrow().is_isolated(t);
-            if isolated && !isolation_active.get() {
-                isolation_active.set(true);
-                log.borrow_mut().emit_at(EventType::IsolationStart, t);
-            } else if !isolated && isolation_active.get() {
-                isolation_active.set(false);
-                log.borrow_mut().emit_at(EventType::IsolationEnd, t);
+    if let Some(ref levels) = cfg.gds_levels {
+        for (level_idx, &level) in levels.iter().enumerate() {
+            regime.radiation.set_fault_multiplier(1.0 + level * 10.0);
+            let t_level = now_secs();
+
+            let log_cell = RefCell::new(&mut log);
+            let regime_cell = RefCell::new(&mut *regime);
+
+            let res = run_w3a(
+                &cfg3,
+                |_node_id, _round| {
+                    let t = now_secs();
+                    let mut r = regime_cell.borrow_mut();
+                    if !r.is_available(t, 3600.0) { return true; }
+                    r.should_inject_fault(t)
+                },
+                || {
+                    let t = now_secs();
+                    let isolated = regime_cell.borrow().is_isolated(t);
+                    if isolated && !isolation_active.get() {
+                        isolation_active.set(true);
+                        log_cell.borrow_mut().emit_at(EventType::IsolationStart, t);
+                    } else if !isolated && isolation_active.get() {
+                        isolation_active.set(false);
+                        log_cell.borrow_mut().emit_at(EventType::IsolationEnd, t);
+                    }
+                    isolated
+                },
+                || {
+                    let t = now_secs();
+                    regime_cell.borrow_mut().is_packet_lost(t)
+                },
+            );
+
+            let _ = regime_cell.into_inner();
+            let _ = log_cell.into_inner();
+
+            let t_level_end = now_secs();
+
+            let completion_rate = if res.elections_total > 0 {
+                res.elections_successful as f64 / res.elections_total as f64
+            } else { 0.0 };
+
+            let e = log.emit(EventType::WorkUnitEnd);
+            e.stress_level = Some(level);
+            e.completion_rate = Some(completion_rate);
+            e.work_done = Some(res.work_done);
+            e.resources_used = Some(t_level_end - t_level);
+
+            // ARR evidence per level
+            if !res.nodes_failed.is_empty() && res.elections_successful > 0 {
+                for &nid in &res.nodes_failed {
+                    let e = log.emit(EventType::Failure);
+                    e.failure_id = Some(format!("node_{nid}_crash_L{level_idx}"));
+                    e.failure_class = Some(FailureClass::AutonomouslyRecovered);
+                }
+            } else {
+                for &nid in &res.nodes_failed {
+                    let e = log.emit(EventType::Failure);
+                    e.failure_id = Some(format!("node_{nid}_crash_L{level_idx}"));
+                    e.failure_class = Some(FailureClass::RecoverableNotRecovered);
+                }
             }
-            isolated
-        },
-        || {
-            let t = now_secs();
-            regime_cell.borrow_mut().is_packet_lost(t)
-        },
-    );
 
-    let regime = regime_cell.into_inner();
-    let mut log = log.into_inner();
+            if res.safety_violations > 0 {
+                let e = log.emit(EventType::Failure);
+                e.failure_id = Some(format!("safety_violation_L{level_idx}"));
+                e.failure_class = Some(FailureClass::Irreversible);
+            }
+
+            for &nid in &res.nodes_failed {
+                let e = log.emit(EventType::ComponentAffected);
+                e.component_id = Some(format!("node-{nid}"));
+            }
+
+            total_work += res.work_done;
+            total_duration += t_level_end - t_level;
+        }
+    } else {
+        let log_cell = RefCell::new(&mut log);
+        let regime_cell = RefCell::new(&mut *regime);
+
+        let res = run_w3a(
+            &cfg3,
+            |_node_id, _round| {
+                let t = now_secs();
+                let mut r = regime_cell.borrow_mut();
+                if !r.is_available(t, 3600.0) { return true; }
+                r.should_inject_fault(t)
+            },
+            || {
+                let t = now_secs();
+                let isolated = regime_cell.borrow().is_isolated(t);
+                if isolated && !isolation_active.get() {
+                    isolation_active.set(true);
+                    log_cell.borrow_mut().emit_at(EventType::IsolationStart, t);
+                } else if !isolated && isolation_active.get() {
+                    isolation_active.set(false);
+                    log_cell.borrow_mut().emit_at(EventType::IsolationEnd, t);
+                }
+                isolated
+            },
+            || {
+                let t = now_secs();
+                regime_cell.borrow_mut().is_packet_lost(t)
+            },
+        );
+
+        let _ = regime_cell.into_inner();
+        let _ = log_cell.into_inner();
+
+        if !res.nodes_failed.is_empty() && res.elections_successful > 0 {
+            for &nid in &res.nodes_failed {
+                let e = log.emit(EventType::Failure);
+                e.failure_id = Some(format!("node_{nid}_crash"));
+                e.failure_class = Some(FailureClass::AutonomouslyRecovered);
+            }
+        } else {
+            for &nid in &res.nodes_failed {
+                let e = log.emit(EventType::Failure);
+                e.failure_id = Some(format!("node_{nid}_crash"));
+                e.failure_class = Some(FailureClass::RecoverableNotRecovered);
+            }
+        }
+
+        if res.safety_violations > 0 {
+            let e = log.emit(EventType::Failure);
+            e.failure_id = Some("safety_violation".into());
+            e.failure_class = Some(FailureClass::Irreversible);
+        }
+
+        for &nid in &res.nodes_failed {
+            let e = log.emit(EventType::ComponentAffected);
+            e.component_id = Some(format!("node-{nid}"));
+        }
+
+        total_work = res.work_done;
+        total_duration = res.duration_s;
+    }
 
     // Close any still-open isolation window
     if isolation_active.get() {
         log.emit(EventType::IsolationEnd);
     }
 
-    // GDS evidence
-    let completion_rate = if res.elections_total > 0 {
-        res.elections_successful as f64 / res.elections_total as f64
-    } else { 0.0 };
-
-    if let Some(ref levels) = cfg.gds_levels {
-        for &s in levels {
-            let e = log.emit(EventType::WorkUnitEnd);
-            e.stress_level = Some(s);
-            e.completion_rate = Some(completion_rate);
-        }
-    }
-
-    // ARR evidence
-    if !res.nodes_failed.is_empty() && res.elections_successful > 0 {
-        for &nid in &res.nodes_failed {
-            let e = log.emit(EventType::Failure);
-            e.failure_id = Some(format!("node_{nid}_crash"));
-            e.failure_class = Some(FailureClass::AutonomouslyRecovered);
-        }
-    } else {
-        for &nid in &res.nodes_failed {
-            let e = log.emit(EventType::Failure);
-            e.failure_id = Some(format!("node_{nid}_crash"));
-            e.failure_class = Some(FailureClass::RecoverableNotRecovered);
-        }
-    }
-
-    if res.safety_violations > 0 {
-        let e = log.emit(EventType::Failure);
-        e.failure_id = Some("safety_violation".into());
-        e.failure_class = Some(FailureClass::Irreversible);
-    }
-
-    // CFR evidence
-    for &nid in &res.nodes_failed {
-        let e = log.emit(EventType::ComponentAffected);
-        e.component_id = Some(format!("node-{nid}"));
-    }
-
     let e = log.emit(EventType::WorkUnitEnd);
-    e.work_done = Some(res.work_done);
-    e.resources_used = Some(res.duration_s);
+    e.work_done = Some(total_work);
+    e.resources_used = Some(total_duration);
 
     regime.stop_all();
     log.emit(EventType::RunEnd);
@@ -492,8 +565,8 @@ This report was generated by the STRESS Rust reference runner.
 - All stochastic behavior is seeded with independent per-run seeds (ChaCha8Rng).
 - Metrics are computed observationally from events.
 - No adaptive behavior was used.
-- SRI is reported on [0, 100] scale per STRESS v0.2 specification.
-- 95% CI uses normal approximation. CI values are reported without clamping.
+- SRI is reported on [0, 100] scale per STRESS v0.2 specification using geometric mean aggregation.
+- 95% CI uses t-distribution for n < 30, normal approximation for n >= 30. CI values are reported without clamping.
 - Baseline runs use real workload execution with all stressors disabled.
 
 ## Known Deviations
