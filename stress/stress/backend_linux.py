@@ -1,9 +1,12 @@
 """Linux backend using tc/netem and cgroups v2."""
+import os
+import signal
 import subprocess
 from .backend import (
     StressBackend,
     NetworkDegradationConfig,
     ResourcePressureConfig,
+    MemoryStressConfig,
 )
 
 
@@ -53,3 +56,27 @@ class LinuxBackend(StressBackend):
 
     def name(self) -> str:
         return "linux-tc-cgroups"
+
+    def inject_memory_stress(self, config: MemoryStressConfig) -> None:
+        raise NotImplementedError("Use StressNgBackend for memory stress injection")
+
+    def remove_memory_stress(self) -> None:
+        raise NotImplementedError("Use StressNgBackend for memory stress injection")
+
+    def pause_workload(self, pid: int) -> None:
+        os.kill(pid, signal.SIGSTOP)
+
+    def resume_workload(self, pid: int) -> None:
+        os.kill(pid, signal.SIGCONT)
+
+    def apply_network_partition(self, interface: str) -> None:
+        subprocess.run(
+            ["iptables", "-A", "OUTPUT", "-o", interface, "-j", "DROP"],
+            check=True,
+        )
+
+    def remove_network_partition(self, interface: str) -> None:
+        subprocess.run(
+            ["iptables", "-D", "OUTPUT", "-o", interface, "-j", "DROP"],
+            check=False,
+        )

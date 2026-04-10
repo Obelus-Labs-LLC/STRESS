@@ -1,20 +1,14 @@
 use crate::types::report::AggregateStats;
+use statrs::distribution::{ContinuousCDF, StudentsT};
 
-/// Two-tailed 95% t-distribution critical values for df=1..29.
-/// For df >= 30, normal approximation z=1.96 is adequate.
-const T_CRIT_95: [f64; 29] = [
-    12.706, 4.303, 3.182, 2.776, 2.571,
-    2.447, 2.365, 2.306, 2.262, 2.228,
-    2.201, 2.179, 2.160, 2.145, 2.131,
-    2.120, 2.110, 2.101, 2.093, 2.086,
-    2.080, 2.074, 2.069, 2.064, 2.060,
-    2.056, 2.052, 2.048, 2.045,
-];
-
+/// Compute two-tailed 95% critical value using t-distribution.
+/// Falls back to z=1.96 for df >= 30.
 fn critical_value(n: usize) -> f64 {
     let df = n - 1;
-    if df >= 1 && df <= 29 {
-        T_CRIT_95[df - 1]
+    if df >= 1 && df < 30 {
+        StudentsT::new(0.0, 1.0, df as f64)
+            .unwrap()
+            .inverse_cdf(0.975)
     } else {
         1.96
     }
@@ -60,6 +54,65 @@ pub fn summarize(values: &[Option<f64>]) -> AggregateStats {
     }
 }
 
+/// Cohen's d effect size between two groups.
+/// d = (mean_a - mean_b) / pooled_std
+/// Returns None if either group has fewer than 2 values or pooled std is zero.
+pub fn cohens_d(group_a: &[f64], group_b: &[f64]) -> Option<f64> {
+    if group_a.len() < 2 || group_b.len() < 2 {
+        return None;
+    }
+    let n_a = group_a.len() as f64;
+    let n_b = group_b.len() as f64;
+    let m_a = group_a.iter().sum::<f64>() / n_a;
+    let m_b = group_b.iter().sum::<f64>() / n_b;
+    let var_a = group_a.iter().map(|x| (x - m_a).powi(2)).sum::<f64>() / (n_a - 1.0);
+    let var_b = group_b.iter().map(|x| (x - m_b).powi(2)).sum::<f64>() / (n_b - 1.0);
+    let pooled_var = ((n_a - 1.0) * var_a + (n_b - 1.0) * var_b) / (n_a + n_b - 2.0);
+    let pooled_std = pooled_var.sqrt();
+    if pooled_std == 0.0 {
+        return None;
+    }
+    Some((m_a - m_b) / pooled_std)
+}
+
+/// Detect outliers using Modified Z-score with Median Absolute Deviation.
+/// Returns indices of values where |modified_z| > threshold.
+pub fn mad_outliers(values: &[f64], threshold: f64) -> Vec<usize> {
+    if values.len() < 3 {
+        return vec![];
+    }
+    let mut sorted = values.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let n = sorted.len();
+    let median = if n % 2 == 0 {
+        (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0
+    } else {
+        sorted[n / 2]
+    };
+
+    let mut abs_devs: Vec<f64> = values.iter().map(|x| (x - median).abs()).collect();
+    abs_devs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mad = if abs_devs.len() % 2 == 0 {
+        (abs_devs[abs_devs.len() / 2 - 1] + abs_devs[abs_devs.len() / 2]) / 2.0
+    } else {
+        abs_devs[abs_devs.len() / 2]
+    };
+
+    if mad == 0.0 {
+        return vec![];
+    }
+
+    values
+        .iter()
+        .enumerate()
+        .filter(|(_, x)| {
+            let modified_z = 0.6745 * (*x - median) / mad;
+            modified_z.abs() > threshold
+        })
+        .map(|(i, _)| i)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -85,6 +138,47 @@ mod tests {
         assert_eq!(result.n_included, 2);
         assert_eq!(result.n_na, 1);
         assert!((result.mean.unwrap() - 0.75).abs() < 0.01);
+    }
+
+    #[test]
+    fn cohens_d_identical_groups() {
+        let a = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let b = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        assert!((cohens_d(&a, &b).unwrap() - 0.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn cohens_d_different_groups() {
+        let a = vec![10.0, 11.0, 12.0, 13.0, 14.0];
+        let b = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let d = cohens_d(&a, &b).unwrap();
+        assert!(d > 4.0); // Large effect size
+    }
+
+    #[test]
+    fn cohens_d_insufficient_data() {
+        assert!(cohens_d(&[1.0], &[2.0, 3.0]).is_none());
+    }
+
+    #[test]
+    fn mad_detects_outlier() {
+        let values = vec![1.0, 1.1, 0.9, 1.0, 1.05, 0.95, 10.0];
+        let outliers = mad_outliers(&values, 3.5);
+        assert!(outliers.contains(&6)); // 10.0 is the outlier
+    }
+
+    #[test]
+    fn mad_no_outliers() {
+        let values = vec![1.0, 1.1, 0.9, 1.0, 1.05, 0.95];
+        let outliers = mad_outliers(&values, 3.5);
+        assert!(outliers.is_empty());
+    }
+
+    #[test]
+    fn mad_constant_values() {
+        let values = vec![5.0, 5.0, 5.0, 5.0];
+        let outliers = mad_outliers(&values, 3.5);
+        assert!(outliers.is_empty());
     }
 
     #[test]

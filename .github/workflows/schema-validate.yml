@@ -1,0 +1,22 @@
+name: Schema Validation
+on:
+  push:
+    paths: ["schema/**", "stress-ref/src/types/**"]
+  pull_request:
+    paths: ["schema/**", "stress-ref/src/types/**"]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install check-jsonschema
+      - name: Validate schemas are valid JSON Schema
+        run: |
+          for schema in schema/*.schema.json; do
+            echo "Validating $schema..."
+            python3 -c "import json; json.load(open('$schema'))"
+          done

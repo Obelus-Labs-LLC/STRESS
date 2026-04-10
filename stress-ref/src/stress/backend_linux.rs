@@ -75,5 +75,53 @@ impl StressBackend for LinuxBackend {
         Ok(())
     }
 
+    fn inject_memory_stress(&mut self, _config: &MemoryStressConfig) -> Result<(), String> {
+        Err("Use StressNgBackend for memory stress".into())
+    }
+
+    fn remove_memory_stress(&mut self) -> Result<(), String> {
+        Err("Use StressNgBackend for memory stress".into())
+    }
+
+    fn pause_workload(&mut self, pid: u32) -> Result<(), String> {
+        let status = std::process::Command::new("kill")
+            .args(["-STOP", &pid.to_string()])
+            .status()
+            .map_err(|e| format!("kill -STOP failed: {}", e))?;
+        if !status.success() {
+            return Err(format!("kill -STOP {} exited with {}", pid, status));
+        }
+        Ok(())
+    }
+
+    fn resume_workload(&mut self, pid: u32) -> Result<(), String> {
+        let status = std::process::Command::new("kill")
+            .args(["-CONT", &pid.to_string()])
+            .status()
+            .map_err(|e| format!("kill -CONT failed: {}", e))?;
+        if !status.success() {
+            return Err(format!("kill -CONT {} exited with {}", pid, status));
+        }
+        Ok(())
+    }
+
+    fn apply_network_partition(&mut self, interface: &str) -> Result<(), String> {
+        let status = std::process::Command::new("iptables")
+            .args(["-A", "OUTPUT", "-o", interface, "-j", "DROP"])
+            .status()
+            .map_err(|e| format!("iptables failed: {}", e))?;
+        if !status.success() {
+            return Err(format!("iptables -A OUTPUT failed with {}", status));
+        }
+        Ok(())
+    }
+
+    fn remove_network_partition(&mut self, interface: &str) -> Result<(), String> {
+        let _ = std::process::Command::new("iptables")
+            .args(["-D", "OUTPUT", "-o", interface, "-j", "DROP"])
+            .status();
+        Ok(())
+    }
+
     fn name(&self) -> &str { "linux-tc-cgroups" }
 }

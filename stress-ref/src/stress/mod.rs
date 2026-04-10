@@ -1,6 +1,8 @@
 pub mod backend;
 pub mod backend_linux;
 pub mod backend_simulated;
+pub mod backend_stressng;
+pub mod backend_toxiproxy;
 pub mod isolation;
 pub mod network;
 pub mod power;

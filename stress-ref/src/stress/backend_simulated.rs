@@ -20,5 +20,23 @@ impl StressBackend for SimulatedBackend {
     fn remove_resource_pressure(&mut self, _cgroup_path: &str) -> Result<(), String> {
         Ok(())
     }
+    fn inject_memory_stress(&mut self, _config: &MemoryStressConfig) -> Result<(), String> {
+        Ok(())
+    }
+    fn remove_memory_stress(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+    fn pause_workload(&mut self, _pid: u32) -> Result<(), String> {
+        Ok(())
+    }
+    fn resume_workload(&mut self, _pid: u32) -> Result<(), String> {
+        Ok(())
+    }
+    fn apply_network_partition(&mut self, _interface: &str) -> Result<(), String> {
+        Ok(())
+    }
+    fn remove_network_partition(&mut self, _interface: &str) -> Result<(), String> {
+        Ok(())
+    }
     fn name(&self) -> &str { "simulated" }
 }

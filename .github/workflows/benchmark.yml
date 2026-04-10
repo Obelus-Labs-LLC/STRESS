@@ -1,0 +1,54 @@
+name: Benchmark
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  deployments: write
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        run: cd stress-ref && cargo build --release
+
+      - name: Run benchmark
+        run: |
+          cd stress-ref
+          ./target/release/stress \
+            --workload W1-A --profile SP-1 --seed 42 --runs 10 \
+            --gds-levels 0.1,0.2,0.3 --isolation-duration 60.0 --c-total 5 \
+            --out-dir ../benchmark-results
+
+      - name: Check SRI threshold
+        run: |
+          SRI=$(python3 -c "import json; d=json.load(open('benchmark-results/aggregate_summary.json')); print(d['sri']['mean'] or 0)")
+          THRESHOLD=${SRI_THRESHOLD:-50}
+          echo "SRI: $SRI (threshold: $THRESHOLD)"
+          python3 -c "assert $SRI >= $THRESHOLD, f'SRI {$SRI} below threshold {$THRESHOLD}'"
+
+      - name: Format for benchmark action
+        run: |
+          python3 -c "
+          import json
+          d = json.load(open('benchmark-results/aggregate_summary.json'))
+          results = []
+          for metric in ['gds', 'arr', 'ist', 'rec', 'cfr', 'sri']:
+              mean = d[metric].get('mean')
+              if mean is not None:
+                  results.append({'name': metric.upper(), 'unit': 'score', 'value': round(mean, 4)})
+          json.dump(results, open('benchmark-output.json', 'w'))
+          "
+
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: customBiggerIsBetter
+          output-file-path: benchmark-output.json
+          auto-push: true
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: benchmarks

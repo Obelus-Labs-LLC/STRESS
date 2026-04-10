@@ -20,6 +20,12 @@ class ResourcePressureConfig:
     cpu_period_us: Optional[int] = None
 
 
+@dataclass(frozen=True)
+class MemoryStressConfig:
+    vm_bytes: int = 268435456  # 256MB default
+    vm_method: str = "flip"
+
+
 class StressBackend(ABC):
     @abstractmethod
     def apply_network_degradation(self, config: NetworkDegradationConfig) -> None: ...
@@ -35,6 +41,19 @@ class StressBackend(ABC):
 
     @abstractmethod
     def name(self) -> str: ...
+
+    @abstractmethod
+    def inject_memory_stress(self, config: MemoryStressConfig) -> None: ...
+    @abstractmethod
+    def remove_memory_stress(self) -> None: ...
+    @abstractmethod
+    def pause_workload(self, pid: int) -> None: ...
+    @abstractmethod
+    def resume_workload(self, pid: int) -> None: ...
+    @abstractmethod
+    def apply_network_partition(self, interface: str) -> None: ...
+    @abstractmethod
+    def remove_network_partition(self, interface: str) -> None: ...
 
 
 class SimulatedBackend(StressBackend):
@@ -54,3 +73,21 @@ class SimulatedBackend(StressBackend):
 
     def name(self) -> str:
         return "simulated"
+
+    def inject_memory_stress(self, config: MemoryStressConfig) -> None:
+        pass
+
+    def remove_memory_stress(self) -> None:
+        pass
+
+    def pause_workload(self, pid: int) -> None:
+        pass
+
+    def resume_workload(self, pid: int) -> None:
+        pass
+
+    def apply_network_partition(self, interface: str) -> None:
+        pass
+
+    def remove_network_partition(self, interface: str) -> None:
+        pass

@@ -1,10 +1,11 @@
 use rand::Rng;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub const STRESS_VERSION: &str = "v0.2";
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
 pub struct StressSeeds {
     pub sr1: u64,
     pub sr2: u64,

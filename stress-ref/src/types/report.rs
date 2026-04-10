@@ -1,7 +1,8 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ProxyValues {
     pub gds: Option<f64>,
     pub arr: Option<f64>,
@@ -13,7 +14,7 @@ pub struct ProxyValues {
     pub weight_profile: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ProxyEvidence {
     pub stress_levels: Vec<f64>,
     pub completion_rates: Vec<f64>,
@@ -33,7 +34,7 @@ pub struct ProxyEvidence {
     pub c_local: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct RunRecord {
     pub run_id: String,
     pub workload_id: String,
@@ -46,7 +47,7 @@ pub struct RunRecord {
     pub events: Vec<crate::types::events::Event>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct AggregateStats {
     pub mean: Option<f64>,
     pub std: Option<f64>,
@@ -56,7 +57,7 @@ pub struct AggregateStats {
     pub n_na: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct AggregateSummary {
     pub gds: AggregateStats,
     pub arr: AggregateStats,

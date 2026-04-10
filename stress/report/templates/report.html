@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STRESS Benchmark Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --border: #30363d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #6e7681;
+            --accent-blue: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-yellow: #d29922;
+            --accent-orange: #db6d28;
+            --accent-red: #f85149;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-size: 1.75rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+            color: var(--text-primary);
+        }
+
+        h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin: 2rem 0 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-primary);
+        }
+
+        h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin: 1.5rem 0 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 2rem;
+        }
+
+        .sri-hero {
+            text-align: center;
+            padding: 2.5rem 2rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 2rem;
+        }
+
+        .sri-score {
+            font-size: 4.5rem;
+            font-weight: 700;
+            line-height: 1;
+            margin-bottom: 0.25rem;
+        }
+
+        .sri-label {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .sri-green { color: var(--accent-green); }
+        .sri-yellow { color: var(--accent-yellow); }
+        .sri-orange { color: var(--accent-orange); }
+        .sri-red { color: var(--accent-red); }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .chart-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.25rem;
+        }
+
+        .chart-card h3 {
+            margin-top: 0;
+            margin-bottom: 1rem;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            width: 100%;
+            max-height: 350px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 1.5rem;
+        }
+
+        thead th {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        tbody td {
+            padding: 0.6rem 1rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+            font-variant-numeric: tabular-nums;
+        }
+
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        tbody tr:hover {
+            background: var(--bg-tertiary);
+        }
+
+        details {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        summary {
+            cursor: pointer;
+            padding: 0.75rem 1rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--accent-blue);
+            user-select: none;
+        }
+
+        summary:hover {
+            color: var(--text-primary);
+        }
+
+        .run-content {
+            padding: 0 1rem 1rem;
+        }
+
+        .disclosure {
+            margin-top: 2rem;
+            padding: 1.25rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            white-space: pre-wrap;
+        }
+
+        .footer {
+            margin-top: 2.5rem;
+            text-align: center;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        @media (max-width: 768px) {
+            body { padding: 1rem; }
+            .charts-grid { grid-template-columns: 1fr; }
+            .sri-score { font-size: 3rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>STRESS Benchmark Report</h1>
+        <p class="subtitle">System Threat Resilience &amp; Extreme Stress Suite</p>
+
+        <!-- SRI Hero -->
+        <div class="sri-hero">
+            <div class="sri-label">Stress Resilience Index</div>
+            {% if sri_mean is not none %}
+            <div class="sri-score {% if sri_mean >= 85 %}sri-green{% elif sri_mean >= 70 %}sri-yellow{% elif sri_mean >= 50 %}sri-orange{% else %}sri-red{% endif %}">
+                {{ "%.1f"|format(sri_mean) }}
+            </div>
+            {% else %}
+            <div class="sri-score sri-red">N/A</div>
+            {% endif %}
+        </div>
+
+        <!-- Charts -->
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3>Proxy Radar</h3>
+                <div class="chart-wrapper">
+                    <canvas id="radarChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3>GDS Degradation Curve</h3>
+                <div class="chart-wrapper">
+                    <canvas id="gdsChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Aggregate Statistics -->
+        <h2>Aggregate Statistics</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Metric</th>
+                    <th>Mean</th>
+                    <th>Std Dev</th>
+                    <th>CI Low</th>
+                    <th>CI High</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for key in ["sri", "gds", "arr", "ist", "rec", "cfr"] %}
+                {% set m = aggregate.get(key, {}) %}
+                <tr>
+                    <td><strong>{{ key|upper }}</strong></td>
+                    <td>{{ "%.2f"|format(m.get("mean", 0) or 0) }}</td>
+                    <td>{{ "%.2f"|format(m.get("std", 0) or 0) }}</td>
+                    <td>{{ "%.2f"|format(m.get("ci_low", 0) or 0) }}</td>
+                    <td>{{ "%.2f"|format(m.get("ci_high", 0) or 0) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Per-Run Details -->
+        {% if runs %}
+        <h2>Per-Run Details</h2>
+        {% for run in runs %}
+        <details>
+            <summary>Run {{ loop.index }}{% if run.get("profile") %} &mdash; Profile: {{ run["profile"] }}{% endif %}</summary>
+            <div class="run-content">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Metric</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for key in ["sri", "gds", "arr", "ist", "rec", "cfr"] %}
+                        <tr>
+                            <td>{{ key|upper }}</td>
+                            <td>{{ "%.2f"|format(run.get(key, 0) or 0) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% if run.get("evidence") %}
+                <h3>Evidence</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Key</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ek, ev in run["evidence"].items() %}
+                        <tr>
+                            <td>{{ ek }}</td>
+                            <td>{{ ev }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% endif %}
+            </div>
+        </details>
+        {% endfor %}
+        {% endif %}
+
+        <!-- Disclosure -->
+        {% if disclosure %}
+        <h2>Disclosure</h2>
+        <div class="disclosure">{{ disclosure }}</div>
+        {% endif %}
+
+        <div class="footer">
+            Generated by STRESS Benchmark Suite
+        </div>
+    </div>
+
+    <script>
+        // Radar Chart — 5 proxy axes
+        const radarCtx = document.getElementById('radarChart').getContext('2d');
+        new Chart(radarCtx, {
+            type: 'radar',
+            data: {
+                labels: {{ proxy_names | tojson }},
+                datasets: [{
+                    label: 'Mean Score',
+                    data: {{ proxy_means | tojson }},
+                    backgroundColor: 'rgba(88, 166, 255, 0.15)',
+                    borderColor: 'rgba(88, 166, 255, 0.8)',
+                    borderWidth: 2,
+                    pointBackgroundColor: 'rgba(88, 166, 255, 1)',
+                    pointRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    r: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            stepSize: 20,
+                            color: '#8b949e',
+                            backdropColor: 'transparent',
+                        },
+                        grid: { color: 'rgba(48, 54, 61, 0.8)' },
+                        angleLines: { color: 'rgba(48, 54, 61, 0.8)' },
+                        pointLabels: {
+                            color: '#e6edf3',
+                            font: { size: 13, weight: '600' },
+                        },
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                },
+            }
+        });
+
+        // GDS Degradation Curve
+        const gdsCtx = document.getElementById('gdsChart').getContext('2d');
+        const gdsLevels = {{ gds_levels | tojson }};
+        const gdsRates = {{ gds_rates | tojson }};
+        new Chart(gdsCtx, {
+            type: 'line',
+            data: {
+                labels: gdsLevels,
+                datasets: [{
+                    label: 'Completion Rate',
+                    data: gdsRates,
+                    borderColor: 'rgba(63, 185, 80, 0.9)',
+                    backgroundColor: 'rgba(63, 185, 80, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 3,
+                    pointBackgroundColor: 'rgba(63, 185, 80, 1)',
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    x: {
+                        title: { display: true, text: 'Stress Level', color: '#8b949e' },
+                        ticks: { color: '#8b949e' },
+                        grid: { color: 'rgba(48, 54, 61, 0.5)' },
+                    },
+                    y: {
+                        title: { display: true, text: 'Completion Rate', color: '#8b949e' },
+                        ticks: { color: '#8b949e' },
+                        grid: { color: 'rgba(48, 54, 61, 0.5)' },
+                        beginAtZero: true,
+                        max: 1.0,
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                },
+            }
+        });
+    </script>
+</body>
+</html>

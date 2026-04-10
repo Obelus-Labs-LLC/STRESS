@@ -1,5 +1,8 @@
 # STRESS — System Threat Resilience & Extreme Stress Suite (v0.2)
 
+![Tests](https://github.com/Obelus-Labs-LLC/STRESS/actions/workflows/test.yml/badge.svg)
+![SRI](https://img.shields.io/badge/SRI-dynamic-blue)
+
 STRESS is a reliability benchmarking framework designed to evaluate how computational workloads behave when foundational operating assumptions are violated by environmental and systemic constraints. Unlike terrestrial benchmarks — which typically assume continuous power, stable connectivity, and rare environmental disruption — STRESS focuses on resilience and behavioral stability under persistent stress, rather than performance optimization, throughput, or cost efficiency.
 
 ## Status
@@ -104,6 +107,47 @@ STRESS supports domain-specific weighting profiles for SRI computation (weighted
 | Satellite/LEO | 0.35 | 0.10 | Isolation survival matters most |
 | Data Center | 0.10 | 0.35 | Cascade containment matters most |
 | Tactical Edge | 0.20 | 0.10 | Recovery and degradation balanced |
+
+## HTML/PDF Reports
+
+Generate visual reports with radar charts and degradation curves:
+
+```bash
+pip install -e ".[report]"      # HTML report (Chart.js radar chart)
+pip install -e ".[pdf]"         # PDF export (WeasyPrint)
+pip install -e ".[all]"         # All optional features
+```
+
+After running a benchmark, `report.html` is generated alongside JSON output when Jinja2 is installed. Convert to PDF with WeasyPrint when installed.
+
+## Real Stress Backends
+
+STRESS supports real fault injection via external tools alongside the default simulated stressors:
+
+| Backend | Covers | Tool |
+|---------|--------|------|
+| `stress-ng` | SP-1 (bit-flip via `--vm-method flip`), SP-2 (thermal via `--cpu-load`) | [stress-ng](https://github.com/ColinIanKing/stress-ng) |
+| `toxiproxy` | SP-4 (network latency, jitter, packet loss) | [Toxiproxy](https://github.com/Shopify/toxiproxy) |
+| Linux primitives | SP-3 (SIGSTOP/SIGCONT), SP-5 (iptables DROP) | Built-in |
+
+## Optional Dependencies
+
+| Group | Install | What |
+|-------|---------|------|
+| `stats` | `pip install -e ".[stats]"` | Bootstrap CIs (scipy), distribution fitting |
+| `report` | `pip install -e ".[report]"` | HTML reports with Chart.js radar charts (Jinja2) |
+| `pdf` | `pip install -e ".[pdf]"` | PDF export (WeasyPrint) |
+| `badges` | `pip install -e ".[badges]"` | Local SVG badge generation (pybadges) |
+| `all` | `pip install -e ".[all]"` | Everything above |
+
+Core `dependencies = []` remains empty by design.
+
+## CI Integration
+
+- **Tests**: Python pytest + Rust cargo test on every push/PR
+- **Benchmarks**: Automated SRI tracking via github-action-benchmark, published to GitHub Pages
+- **SRI Threshold Gate**: CI fails if SRI drops below configurable threshold
+- **Schema Validation**: JSON output validated against `schema/*.schema.json`
 
 ## Version History
 
