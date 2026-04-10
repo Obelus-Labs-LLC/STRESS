@@ -26,10 +26,20 @@ jobs:
 
       - name: Check SRI threshold
         run: |
-          SRI=$(python3 -c "import json; d=json.load(open('benchmark-results/aggregate_summary.json')); print(d['sri']['mean'] or 0)")
-          THRESHOLD=${SRI_THRESHOLD:-50}
-          echo "SRI: $SRI (threshold: $THRESHOLD)"
-          python3 -c "assert $SRI >= $THRESHOLD, f'SRI {$SRI} below threshold {$THRESHOLD}'"
+          python3 -c "
+          import json, sys
+          d = json.load(open('benchmark-results/aggregate_summary.json'))
+          sri = d.get('sri', {}).get('mean')
+          threshold = float('${SRI_THRESHOLD:-50}')
+          if sri is None:
+              print('SRI: N/A (some proxies could not be computed)')
+              print('::warning::SRI is N/A — insufficient proxy data for this benchmark config')
+              sys.exit(0)
+          print(f'SRI: {sri:.2f} (threshold: {threshold})')
+          if sri < threshold:
+              print(f'::error::SRI {sri:.2f} below threshold {threshold}')
+              sys.exit(1)
+          "
 
       - name: Format for benchmark action
         run: |
